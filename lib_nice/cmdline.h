@@ -9,6 +9,7 @@
 #define _CMDLINE_H_
 
 #include<termios.h>
+#include<lib_nice/receiver.h>
 
 #ifdef __cplusplus
 extern "C" 
@@ -32,9 +33,9 @@ extern "C"
 */
 struct cmdline
 {
-    char prompt[20];
-    //struct command* ;
-    //struct 接收器 ;
+    char prompt[PROMPT_MAX_SIZE];
+    //struct command* cmd_group;
+    struct receiver cmd_recv;
     int cmdline_in;
     int cmdline_out;
     struct termios oldterm;
@@ -56,7 +57,12 @@ void cmdline_set_prompt();
 void cmdline_start_interact();
 
 /*
-* free cmmdline
+* 指定cmdline退出
+*/
+void cmdline_quit();
+
+/*
+* free指定cmdline
 */
 void cmdline_free();
 
