@@ -1,7 +1,7 @@
 /*************************************************************************
 	> File Name: receiver.h
 	> Author: ZHJ
-	> Remarks: struct cmdline的配套接收器相关定义
+	> Remarks: struct cmdline的配套接收器相关
 	> Created Time: Wed 29 Dec 2021 10:19:11 PM CST
  ************************************************************************/
 
@@ -21,6 +21,13 @@ extern "C"
 */
 #define PROMPT_MAX_SIZE 32
 #define INPUT_BUF_MAX_SIZE 512
+
+/*
+* 接收器配套回调函数
+* func_write_char: 设定字符如何write至输出流
+*/
+struct receiver;
+typedef int (func_write_char)(struct receiver*, char);
 
 /*
 * 接收器状态
@@ -63,7 +70,22 @@ struct receiver
     struct inputbuf right_buf;
     char right[INPUT_BUF_MAX_SIZE];
     //历史记录
+    //回调函数
+    func_write_char* write_char; 
 };
+
+/*
+* receiver初始化
+* 返回0为初始化成功
+*/
+int receiver_init(struct receiver* recv, func_write_char* write_char);
+
+/*
+* 创建新的命令行
+* 对缓冲区进行重置/输出prompt
+* 返回0为执行成功
+*/
+int receiver_new_cmdline(struct receiver* recv, const char* prompt);
 
 #ifdef __cplusplus
 }
