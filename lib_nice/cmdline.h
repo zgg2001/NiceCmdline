@@ -60,17 +60,22 @@ void cmdline_set_prompt(struct cmdline* cl, const char* prompt);
 /*
 * 指定cmdline开始交互
 */
-void cmdline_start_interact();
+void cmdline_start_interact(struct cmdline* cl);
+
+/*
+* 指定cmdline录入指定内容
+*/
+int cmdline_parse_input(struct cmdline* cl, const char* buf, unsigned int size);
 
 /*
 * 指定cmdline退出
 */
-void cmdline_quit();
+void cmdline_quit(struct cmdline* cl);
 
 /*
-* free指定cmdline
+* free指定cmdline并恢复终端设置
 */
-void cmdline_free();
+void cmdline_exit_free(struct cmdline* cl);
 
 /*
 * 接收器回调函数 - 字符输出操作
