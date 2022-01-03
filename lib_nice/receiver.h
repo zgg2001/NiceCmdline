@@ -87,6 +87,19 @@ int receiver_init(struct receiver* recv, func_write_char* write_char);
 */
 int receiver_new_cmdline(struct receiver* recv, const char* prompt);
 
+#define RECEIVER_RES_SUCCESS       0
+#define RECEIVER_RES_VALIDATED     1
+#define RECEIVER_RES_COMPLETE      2
+#define RECEIVER_RES_NOT_RUNNING  -1
+#define RECEIVER_RES_EOF          -2
+#define RECEIVER_RES_EXITED       -3
+
+/*
+* 对输入的字符进行解析
+* 返回值按上面宏定义解释
+*/
+int receiver_parse_char(struct receiver* recv, char c);
+
 #ifdef __cplusplus
 }
 #endif
