@@ -32,6 +32,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include<stdio.h>
 #include<errno.h>
 #include<string.h>
 #include<ctype.h>
@@ -45,7 +46,7 @@ static void receiver_puts(struct receiver* recv, const char* str);
 /*
 * 内部函数 输出接收器右部缓冲区
 */
-static void display_right_buffer(struct receiver* recv);
+static void display_right_buffer(struct receiver* recv, int force);
 
 /* a very very basic printf with one arg and one format 'u' */
 static void receiver_miniprintf(struct receiver* recv, const char* buf, unsigned int val);
@@ -82,10 +83,10 @@ receiver_new_cmdline(struct receiver* recv, const char* prompt)
     //输出prompt
     recv->prompt_size = strnlen(prompt, INPUT_BUF_MAX_SIZE - 1);
     if(prompt != recv->prompt)
-		memcpy(recv->prompt, prompt, recv->prompt_size);
+        memcpy(recv->prompt, prompt, recv->prompt_size);
     recv->prompt[INPUT_BUF_MAX_SIZE - 1] = '\0';
     for(i = 0; i < recv->prompt_size; ++i)
-		recv->write_char(recv, recv->prompt[i]);
+        recv->write_char(recv, recv->prompt[i]);
     
     recv->status = RECEIVER_RUNNING;
     
@@ -103,6 +104,7 @@ receiver_parse_char(struct receiver* recv, char c)
         return RECEIVER_RES_EXITED;
 
     int cmd;
+    char temp_char;
     
     cmd = parse_vt102_char(&recv->vt102, c);
 
@@ -115,11 +117,134 @@ receiver_parse_char(struct receiver* recv, char c)
     {
         switch(cmd)
         {
-        //ctrl c
-        case CMDLINE_KEY_CTRL_C:
-            receiver_puts(recv, "\r\n");
-            receiver_new_cmdline(recv, recv->prompt);
-        break;
+            //ctrl p - 历史记录向上
+            case CMDLINE_KEY_UP_ARR:
+            case CMDLINE_KEY_CTRL_P:
+            break;
+            
+            //ctrl n - 历史记录向下
+            case CMDLINE_KEY_DOWN_ARR:
+            case CMDLINE_KEY_CTRL_N:
+            break;
+            
+            //ctrl f - 光标向右
+            case CMDLINE_KEY_RIGHT_ARR:
+            case CMDLINE_KEY_CTRL_F:
+                if(INPUT_BUF_IS_EMPTY(&recv->right_buf))
+                    break;
+                temp_char = inputbuf_get_head(&recv->right_buf);
+                inputbuf_del_head(&recv->right_buf);
+                inputbuf_add_tail(&recv->left_buf, temp_char);
+                receiver_puts(recv, vt102_right_arr);
+            break;
+            
+            //ctrl b - 光标向左
+            case CMDLINE_KEY_LEFT_ARR:
+            case CMDLINE_KEY_CTRL_B:
+                if(INPUT_BUF_IS_EMPTY(&recv->left_buf))
+                    break;
+                temp_char = inputbuf_get_tail(&recv->left_buf);
+                inputbuf_del_tail(&recv->left_buf);
+                inputbuf_add_head(&recv->right_buf, temp_char);
+                receiver_puts(recv, vt102_left_arr);
+            break;
+            
+            //退格 - 删除光标左侧的第一个字符
+            case CMDLINE_KEY_BKSPACE:
+                if(INPUT_BUF_IS_EMPTY(&recv->left_buf))
+                    break;
+                inputbuf_del_tail(&recv->left_buf);
+                receiver_puts(recv, vt102_bs);
+                display_right_buffer(recv, 1);
+            break;
+            
+            //回车 - 执行命令
+            case CMDLINE_KEY_RETURN:
+            case CMDLINE_KEY_RETURN2:
+            break;
+            
+            //ctrl a - 移动光标至最左
+            case CMDLINE_KEY_CTRL_A:
+                if(INPUT_BUF_IS_EMPTY(&recv->left_buf))
+                    break;
+                receiver_miniprintf(recv, vt102_multi_left, recv->left_buf.len);
+                while(!INPUT_BUF_IS_EMPTY(&recv->left_buf)) 
+                {
+                    temp_char = inputbuf_get_tail(&recv->left_buf);
+                    inputbuf_del_tail(&recv->left_buf);
+                    inputbuf_add_head(&recv->right_buf, temp_char);
+                }
+            break;
+            
+            //ctrl e - 移动光标至最右
+            case CMDLINE_KEY_CTRL_E:
+                if (INPUT_BUF_IS_EMPTY(&recv->right_buf))
+                    break;
+                receiver_miniprintf(recv, vt102_multi_right, recv->right_buf.len);
+                while(!INPUT_BUF_IS_EMPTY(&recv->right_buf)) 
+                {
+                    temp_char = inputbuf_get_head(&recv->right_buf);
+                    inputbuf_del_head(&recv->right_buf);
+                    inputbuf_add_tail(&recv->left_buf, temp_char);
+                }
+            break;
+            
+            //ctrl k - 剪切光标右侧的内容
+            case CMDLINE_KEY_CTRL_K:
+            break;
+            
+            //ctrl y - 粘贴剪切的内容
+            case CMDLINE_KEY_CTRL_Y:
+            break;
+            
+            //ctrl c - 重置命令行
+            case CMDLINE_KEY_CTRL_C:
+                receiver_puts(recv, "\r\n");
+                receiver_new_cmdline(recv, recv->prompt);
+            break;
+            
+            //delete / ctrl d - 删除光标右侧的第一个字符
+            case CMDLINE_KEY_SUPPR:
+            case CMDLINE_KEY_CTRL_D:
+                if (cmd == CMDLINE_KEY_CTRL_D && 
+                    INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
+                    INPUT_BUF_IS_EMPTY(&recv->right_buf)) 
+                {
+                    return RECEIVER_RES_EOF;
+                }
+                
+                if(INPUT_BUF_IS_EMPTY(&recv->right_buf))
+                    break;
+                inputbuf_del_head(&recv->right_buf);    
+                display_right_buffer(recv, 1);
+            break;
+            
+            //tab - 尝试补全命令
+            case CMDLINE_KEY_TAB:
+            case CMDLINE_KEY_HELP:
+            break;
+            
+            //ctrl l - 清屏
+            case CMDLINE_KEY_CTRL_L:
+                receiver_redisplay(recv);
+            break;
+            
+            //alt 退格 / ctrl w - 删除光标左侧的第一个词
+            case CMDLINE_KEY_META_BKSPACE:
+            case CMDLINE_KEY_CTRL_W:
+            break;
+            
+            //alt d - 删除光标右侧的第一个词
+            case CMDLINE_KEY_META_D:
+            break;
+            
+            //alt b - 光标向左移动到当前单词最前端
+            case CMDLINE_KEY_WLEFT:
+            break;
+            
+            //alt f - 光标向右移动到当前单词最后端
+            case CMDLINE_KEY_WRIGHT:
+            break;
         }
         return RECEIVER_RES_SUCCESS;
     }
@@ -130,8 +255,27 @@ receiver_parse_char(struct receiver* recv, char c)
     if(inputbuf_add_tail(&recv->left_buf, c) < 0)//左缓冲区溢出
         return RECEIVER_RES_SUCCESS;
     recv->write_char(recv, c);
-	display_right_buffer(recv);
+    display_right_buffer(recv, 0);
     return RECEIVER_RES_SUCCESS;
+}
+
+void
+receiver_redisplay(struct receiver* recv)
+{
+    if(!recv)
+        return;
+    
+    unsigned int i;
+    char temp_char;
+
+    receiver_puts(recv, vt102_home);
+    for(i = 0; i < recv->prompt_size; ++i)
+        recv->write_char(recv, recv->prompt[i]);
+    INPUTBUF_FOREACH(&recv->left_buf, i, temp_char)
+    {
+        recv->write_char(recv, temp_char);
+    }
+    display_right_buffer(recv, 1);
 }
 
 static void
@@ -146,21 +290,21 @@ receiver_puts(struct receiver* recv, const char* str)
 }
 
 static void
-display_right_buffer(struct receiver* recv)
+display_right_buffer(struct receiver* recv, int force)
 {
-	if(!recv || INPUT_BUF_IS_EMPTY(&recv->right_buf))
+    if(!recv || (!force && INPUT_BUF_IS_EMPTY(&recv->right_buf)))
         return;
 
     unsigned int i;
-	char c;
+    char c;
 
     //消除光标右部数据并再次显示
-	receiver_puts(recv, vt102_clear_right);
-	INPUTBUF_FOREACH(&recv->right_buf, i, c) 
+    receiver_puts(recv, vt102_clear_right);
+    INPUTBUF_FOREACH(&recv->right_buf, i, c) 
     {
-		recv->write_char(recv, c);
-	}
-	if(!INPUT_BUF_IS_EMPTY(&recv->right_buf))
+        recv->write_char(recv, c);
+    }
+    if(!INPUT_BUF_IS_EMPTY(&recv->right_buf))
         receiver_miniprintf(recv, vt102_multi_left, (recv->right_buf).len);
 }
 
@@ -171,9 +315,9 @@ receiver_miniprintf(struct receiver* recv, const char* buf, unsigned int val)
     if(!recv || !buf)
         return;
 
-	char c, started=0, div=100;
+    char c, started=0, div=100;
 
-	while((c = *(buf++))) 
+    while((c = *(buf++))) 
     {
         if(c != '%')
         {

@@ -61,9 +61,9 @@ typedef int (func_write_char)(struct receiver*, char);
 */
 enum receiver_status 
 {
-	RECEIVER_INIT,
-	RECEIVER_RUNNING,
-	RECEIVER_EXITED
+    RECEIVER_INIT,
+    RECEIVER_RUNNING,
+    RECEIVER_EXITED
 };
 
 /*
@@ -126,6 +126,11 @@ int receiver_new_cmdline(struct receiver* recv, const char* prompt);
 * 返回值按上面宏定义解释
 */
 int receiver_parse_char(struct receiver* recv, char c);
+
+/*
+* 重新显示当前命令行
+*/
+void receiver_redisplay(struct receiver* recv);
 
 #ifdef __cplusplus
 }
