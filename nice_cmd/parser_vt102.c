@@ -32,7 +32,9 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include<stdio.h>
 #include<string.h>
+#include<stdint.h>
 #include"parser_vt102.h"
 
 /*
@@ -43,7 +45,7 @@ const char *parser_vt102_commands[] = {
     vt102_down_arr,
     vt102_right_arr,
     vt102_left_arr,
-    "\177",
+    "\010",
     "\n",
     "\001",
     "\005",
@@ -80,10 +82,11 @@ int
 parser_match_command(char* buf, unsigned int size)
 {
     const char *cmd;
-	unsigned int cmdlen;
-	unsigned int i = 0;
+    unsigned int cmdlen;
+    unsigned int i = 0;
+    
     //遍历parser_vt102_commands[]比对
-	for(i = 0; i < sizeof(parser_vt102_commands) / sizeof(const char*); ++i) 
+    for(i = 0; i < sizeof(parser_vt102_commands) / sizeof(const char*); ++i) 
     {
         cmd = *(parser_vt102_commands + i);
         cmdlen = strnlen(cmd, PARSER_VT102_BUF_SIZE);
@@ -98,54 +101,62 @@ parser_match_command(char* buf, unsigned int size)
 int
 parse_vt102_char(struct parser_vt102* p, char c)
 {
-	if(!p)
+    if(!p)
         return -1;
-	if(p->buf_pos >= PARSER_VT102_BUF_SIZE) 
+    
+    uint8_t temp_c = (uint8_t)c;
+    unsigned int size;
+
+    if(p->buf_pos >= PARSER_VT102_BUF_SIZE) 
     {
         p->status = PARSER_VT102_INIT;
         p->buf_pos = 0;
-	}
+    }
+
     //新字符加入解析器缓冲区
-    unsigned int size;
-	p->buf[p->buf_pos++] = c;
-	size = p->buf_pos;
+    p->buf[p->buf_pos++] = temp_c;
+    size = p->buf_pos;
+    
     //根据解析器状态进行控制码比对
-	switch(p->status) 
+    switch(p->status) 
     {
-	case PARSER_VT102_INIT:
-        if(c == 033) 
-        {
-            p->status = PARSER_VT102_ESCAPE;
-        }
-        else 
-        {
-            p->buf_pos = 0;
-            return parser_match_command(p->buf, size);
-        }
-    break;
-	case PARSER_VT102_ESCAPE:
-        if(c == 0133) 
-        {
-            p->status = PARSER_VT102_ESCAPE_CSI;
-        }
-        else if(c >= 060 && c <= 0177) 
-        {
-            p->buf_pos = 0;
-            p->status = PARSER_VT102_INIT;
-            return parser_match_command(p->buf, size);
-        }
-    break;
-	case PARSER_VT102_ESCAPE_CSI:
-        if(c >= 0100 && c <= 0176) 
-        {
-            p->buf_pos = 0;
-            p->status = PARSER_VT102_INIT;
-            return parser_match_command(p->buf, size);
-        }
-	break;
-	default:
-        p->buf_pos = 0;
+        case PARSER_VT102_INIT:
+            if(temp_c == 033) 
+            {
+                p->status = PARSER_VT102_ESCAPE;
+            }
+            else 
+            {
+                p->buf_pos = 0;
+                return parser_match_command(p->buf, size);
+            }
         break;
-	}
-	return -2;
+        
+        case PARSER_VT102_ESCAPE:
+            if(temp_c == 0133) 
+            {
+                p->status = PARSER_VT102_ESCAPE_CSI;
+            }
+            else if(temp_c >= 060 && temp_c <= 0177) 
+            {
+                p->buf_pos = 0;
+                p->status = PARSER_VT102_INIT;
+                return parser_match_command(p->buf, size);
+            }
+        break;
+        
+        case PARSER_VT102_ESCAPE_CSI:
+            if(temp_c >= 0100 && temp_c <= 0176) 
+            {
+                p->buf_pos = 0;
+                p->status = PARSER_VT102_INIT;
+                return parser_match_command(p->buf, size);
+            }
+        break;
+        
+        default:
+            p->buf_pos = 0;
+        break;
+    }
+    return -2;
 }

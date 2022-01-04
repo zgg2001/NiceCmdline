@@ -122,8 +122,8 @@ enum parser_vt102_status
 struct parser_vt102
 {
     unsigned int buf_pos;
-	char buf[PARSER_VT102_BUF_SIZE];
-	enum parser_vt102_status status;
+    char buf[PARSER_VT102_BUF_SIZE];
+    enum parser_vt102_status status;
 };
 
 /*
