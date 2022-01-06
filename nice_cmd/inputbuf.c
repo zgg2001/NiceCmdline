@@ -84,6 +84,13 @@ inputbuf_del_head(struct inputbuf* ibuf)
 {
     if(!ibuf || INPUT_BUF_IS_EMPTY(ibuf))
         return -EINVAL;
+    if(ibuf->len == 1)
+    {
+        ibuf->len = 0;
+        ibuf->start = 0;
+        ibuf->end = 0;
+        return 0;
+    }
     (ibuf->len)--;
     ibuf->start += 1;
     ibuf->start %= ibuf->maxlen;
@@ -95,6 +102,13 @@ inputbuf_del_tail(struct inputbuf* ibuf)
 {
     if(!ibuf || INPUT_BUF_IS_EMPTY(ibuf))
         return -EINVAL;
+    if(ibuf->len == 1)
+    {
+        ibuf->len = 0;
+        ibuf->start = 0;
+        ibuf->end = 0;
+        return 0;
+    }
     (ibuf->len)--;
     ibuf->end += ibuf->maxlen;
     ibuf->end -= 1;
