@@ -49,10 +49,8 @@ struct cmdline;
 #define offsetof(type, field)  ((size_t) &( ((type*)0)->field) )
 #endif
 
-/*
-* 解析结果缓冲区空间
-*/
 #define PARSE_RESULT_MAX 10240
+#define COMPLETION_BUF_SIZE 64
 
 /*
 * 令牌前置结构
@@ -120,7 +118,22 @@ typedef parse_inst_t* parse_ctx_t;
 int parse(struct cmdline* cl, const char* buf);
 
 /*
+* 补全结果对应返回值
+*/
+#define COMPLETE_FINISHED   0
+#define COMPLETE_AGAIN      1
+#define COMPLETE_BUFFER     2
+
+/*
+* 对buf中的命令进行补全
 *
+*    cl: cmdline结构体 读取其命令组cmd_group
+*   buf: 命令字符串
+* state: 解析模式 (*state)为0时尝试完成 为-1时仅显示选择
+*   dst: 返回的字符串
+*  size: dst最大长度
+*
+* 出错时返回值为负数
 */
 int complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned int size);
 

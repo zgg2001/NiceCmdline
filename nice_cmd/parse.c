@@ -34,7 +34,6 @@
 
 #include<stdio.h>
 #include<string.h>
-#include<inttypes.h>
 #include<ctype.h>
 #include"parse.h"
 #include"cmdline.h"
@@ -104,7 +103,7 @@ nb_common_chars(const char* s1, const char* s2)
 *
 * 返回 0  说明匹配成功
 * 返回 -1 说明匹配失败
-* 返回 >0 即为匹配成功的令牌数
+* 返回 >0 为匹配成功的令牌数(未完全匹配)
 */
 static int
 match_inst(parse_inst_t* inst, const char* buf, unsigned int nb_match_token, void* result_buf)
@@ -129,14 +128,14 @@ match_inst(parse_inst_t* inst, const char* buf, unsigned int nb_match_token, voi
         //当字符串结束或存在注释符#时停止匹配
         if(isendofline(*buf) || iscomment(*buf))
             break;
-
+        
         //使用令牌回调函数parse进行解析
         n = token_hdr.ops->parse(token_p, buf, (result_buf ? result_buf + token_hdr.offset : NULL));
         if(n < 0)
             break;
         i++;
         buf += n;
-
+        
         //开始匹配下一个令牌
         ++token_num;
         token_p = inst->tokens[token_num];
@@ -283,7 +282,196 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
     parse_ctx_t* ctx = cl->cmd_group;//命令组
     unsigned int inst_num = 0;//正在匹配的命令下标
     parse_inst_t* inst;//指向正在匹配的命令
+    parse_token_hdr_t* token_p;
+    struct token_hdr token_hdr;
     
+    int nb_token = 0;//buf中的完整令牌数
+    const char * incomplete_token = buf;
+    unsigned int incomplete_token_len;
+    
+    char completion_buf[COMPLETION_BUF_SIZE];
+    int completion_len = -1;
+    unsigned int nb_completable;
+    unsigned int nb_non_completable;
+    
+    char tmpbuf[COMPLETION_BUF_SIZE];
+    unsigned int i, n;
+    int l;
+    int local_state = 0;
+    const char* help_str;
+
+    //统计buf中的完整令牌数 以及确定需要补全的令牌
+    for(i = 0; buf[i]; ++i)
+    {
+        if(!isblank(buf[i]) && isblank(buf[i+1]))
+            ++nb_token;
+        if(isblank(buf[i]) && !isblank(buf[i+1]))
+            incomplete_token = buf + i + 1;
+    }
+    incomplete_token_len = strnlen(incomplete_token, INPUT_BUF_MAX_SIZE);
+
+    //初筛
+    if(*state <= 0)
+    {
+        nb_completable = 0;
+        nb_non_completable = 0;
+        
+        inst = ctx[inst_num];
+        while(inst)
+        {
+            //对完整令牌进行匹配
+            if(nb_token && match_inst(inst, buf, nb_token, NULL))
+                goto next;
+            
+            //匹配成功 -> 获取要补全的令牌
+            token_p = inst->tokens[nb_token];
+            if(token_p)
+                memcpy(&token_hdr, token_p, sizeof(token_hdr));
+            
+            //无法补全
+            if(!token_p || !token_hdr.ops->complete_get_nb || 
+               !token_hdr.ops->complete_get_elt || 
+               (n = token_hdr.ops->complete_get_nb(token_p)) == 0)
+            {
+                nb_non_completable++;
+                goto next;
+            }
+            
+            //对想要补全的令牌进行匹配
+            for(i = 0; i < n; ++i)
+            {
+                if(token_hdr.ops->complete_get_elt(token_p, i, tmpbuf, sizeof(tmpbuf)) < 0)
+                    continue;
+                strcat(tmpbuf, " "); /* we have at least room for one char */
+                //匹配补全令牌
+                if(!strncmp(incomplete_token, tmpbuf, incomplete_token_len))
+                {
+                    if(completion_len == -1)//起始
+                    {
+                        strcpy(completion_buf, tmpbuf + incomplete_token_len);
+                        completion_len = strlen(tmpbuf + incomplete_token_len);
+                    }
+                    else
+                    {
+                        completion_len = nb_common_chars(completion_buf, tmpbuf + incomplete_token_len);
+                        completion_buf[completion_len] = '\0';
+                    }
+                    nb_completable++;
+                }
+            }
+            
+        next:
+            ++inst_num;
+            inst = ctx[inst_num];
+        }
+        
+        //无法补全
+        if(nb_completable == 0 && nb_non_completable == 0)
+            return 0;
+        
+        //不需多项选择
+        if(*state == 0 && incomplete_token_len > 0)
+        {
+            //存在可补全内容
+            if(completion_len > 0)
+            {
+                if(completion_len + 1 > size)
+                    return 0;
+                strcpy(dst, completion_buf);
+                return 2;
+            }
+        }
+    }
+
+    /*
+    * 进入输出help模式 首先更改state值 
+    * 此处的state值意义变为已处理数量
+    * local_state: 本次遍历处理数量
+    * 
+    * 当local_state < *state时，说明此次已处理
+    * 开始处理下一个
+    */
+    if(*state == -1)
+        *state = 0;
+
+    inst_num = 0;
+    inst = ctx[inst_num];
+    while(inst)
+    {
+        /* we need to redo it */
+        inst = ctx[inst_num];
+        
+        //匹配已完成令牌
+        if(nb_token && match_inst(inst, buf, nb_token, NULL))
+            goto next2;
+       
+        //匹配成功 -> 获取要补全的令牌
+        token_p = inst->tokens[nb_token];
+        if(token_p)
+            memcpy(&token_hdr, token_p, sizeof(token_hdr));
+        
+        //无法补全
+        if(!token_p || !token_hdr.ops->complete_get_nb ||
+           !token_hdr.ops->complete_get_elt ||
+           (n = token_hdr.ops->complete_get_nb(token_p)) == 0)
+        {
+            if(local_state < *state)
+            {
+                ++local_state;
+                goto next2;
+            }
+            (*state)++;
+            //help str
+            if (token_p && token_hdr.ops->get_help)
+            {
+                token_hdr.ops->get_help(token_p, tmpbuf, sizeof(tmpbuf));
+                help_str = inst->help_str;
+                if (help_str)
+                    snprintf(dst, size, "[%s]: %s", tmpbuf, help_str);
+                else
+                    snprintf(dst, size, "[%s]: No help", tmpbuf);
+            }
+            else
+            {
+                snprintf(dst, size, "[RETURN]");
+            }
+            return 1;
+        }
+        
+        //可以补全 有多种选择
+        for(i = 0; i < n; ++i)
+        {
+            if(token_hdr.ops->complete_get_elt(token_p, i, tmpbuf, sizeof(tmpbuf)) < 0)
+                continue;
+            strcat(tmpbuf, " "); /* we have at least room for one char */
+            //匹配补全令牌
+            if(!strncmp(incomplete_token, tmpbuf, incomplete_token_len))
+            {
+                if(local_state < *state)
+                {
+                    ++local_state;
+                    continue;
+                }
+                (*state)++;
+                l = snprintf(dst, size, "%s", tmpbuf);
+                if(l >= 0 && token_hdr.ops->get_help)
+                {
+                    token_hdr.ops->get_help(token_p, tmpbuf, sizeof(tmpbuf));
+                    help_str = inst->help_str;
+                    if(help_str)
+                        snprintf(dst + l, size - l, "[%s]: %s", tmpbuf, help_str);
+                    else
+                        snprintf(dst + l, size - l, "[%s]: No help", tmpbuf);
+                }
+                return 1;
+            }
+        }
+        
+    next2:
+        ++inst_num;
+        inst = ctx[inst_num];
+    }
+
     return 0;
 }
 
