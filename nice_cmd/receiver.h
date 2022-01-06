@@ -51,10 +51,14 @@ extern "C"
 
 /*
 * 接收器配套回调函数
-* func_write_char: 设定字符如何write至输出流
+*   func_write_char: 设定字符如何write至输出流
+*    func_parse_cmd: 解析字符串
+* func_complete_cmd: 补全字符串
 */
 struct receiver;
 typedef int (func_write_char)(struct receiver*, char);
+typedef void (func_parse_cmd)(struct receiver*, const char*);
+typedef int (func_complete_cmd)(struct receiver*, const char*, int*, char*, unsigned int);
 
 /*
 * 接收器状态
@@ -81,6 +85,11 @@ enum receiver_status
 *        left: 左缓冲配套的内存
 *   right_buf: 输入缓冲区的右部分
 *       right: 右缓冲配套的内存
+*     all_cmd: 完整的命令 用于解析
+*
+*  write_char: 输出字符
+*   parse_cmd: 解析命令
+*complete_cmd: 补全命令
 */
 struct receiver
 {
@@ -96,16 +105,19 @@ struct receiver
     char left[INPUT_BUF_MAX_SIZE];
     struct inputbuf right_buf;
     char right[INPUT_BUF_MAX_SIZE];
+    char all_cmd[INPUT_BUF_MAX_SIZE * 2];
     //历史记录
     //回调函数
-    func_write_char* write_char; 
+    func_write_char* write_char;
+    func_parse_cmd* parse_cmd;
+    func_complete_cmd* complete_cmd;
 };
 
 /*
 * receiver初始化
 * 返回0为初始化成功
 */
-int receiver_init(struct receiver* recv, func_write_char* write_char);
+int receiver_init(struct receiver* recv, func_write_char* write_char, func_parse_cmd* parse_cmd, func_complete_cmd* complete_cmd);
 
 /*
 * 创建新的命令行
@@ -114,8 +126,18 @@ int receiver_init(struct receiver* recv, func_write_char* write_char);
 */
 int receiver_new_cmdline(struct receiver* recv, const char* prompt);
 
+/*
+* 接收器退出(RECEIVER_EXITED)
+*/
+void receiver_quit(struct receiver* recv);
+
+/*
+* 对接收器缓冲区的字符串进行组合
+*/
+const char* receiver_combi_cmd(struct receiver* recv);
+
 #define RECEIVER_RES_SUCCESS       0
-#define RECEIVER_RES_VALIDATED     1
+#define RECEIVER_RES_PARSED        1
 #define RECEIVER_RES_COMPLETE      2
 #define RECEIVER_RES_NOT_RUNNING  -1
 #define RECEIVER_RES_EOF          -2

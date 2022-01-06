@@ -52,7 +52,7 @@ static void display_right_buffer(struct receiver* recv, int force);
 static void receiver_miniprintf(struct receiver* recv, const char* buf, unsigned int val);
 
 int 
-receiver_init(struct receiver* recv, func_write_char* write_char)
+receiver_init(struct receiver* recv, func_write_char* write_char, func_parse_cmd* parse_cmd, func_complete_cmd* complete_cmd)
 {
     if(!recv || !write_char)
         return -EINVAL;
@@ -63,6 +63,8 @@ receiver_init(struct receiver* recv, func_write_char* write_char)
     
     recv->status = RECEIVER_INIT;
     recv->write_char = write_char;
+    recv->parse_cmd = parse_cmd;
+    recv->complete_cmd = complete_cmd;
     
     return 0;
 }
@@ -93,15 +95,75 @@ receiver_new_cmdline(struct receiver* recv, const char* prompt)
     return 0;
 }
 
+void 
+receiver_quit(struct receiver* recv)
+{
+    if(!recv)
+        return;
+    recv->status = RECEIVER_EXITED;
+}
+
+const char*
+receiver_combi_cmd(struct receiver* recv)
+{
+    if(!recv)
+        return NULL;
+
+    struct inputbuf* left = &recv->left_buf;
+    struct inputbuf* right = &recv->right_buf;
+    char* all = recv->all_cmd;
+    
+    int l_len, r_len, i, now = 0;
+    char c;
+
+    l_len = recv->left_buf.len;
+    r_len = recv->right_buf.len;
+
+    //合并左缓冲区
+    if(left->start == 0)
+    {
+        memcpy(all, recv->left, l_len);
+    }
+    else
+    {
+        INPUTBUF_FOREACH(left, i, c)
+        {
+            all[now] = c;
+            ++now;
+        }
+    }
+
+    //合并右缓冲区
+    if(right->start == 0)
+    {
+        memcpy(all + l_len, recv->right, r_len);
+    }
+    else
+    {
+        INPUTBUF_FOREACH(right, i, c)
+        {
+            all[now] = c;
+            ++now;
+        } 
+    }
+
+    fflush(stdout);
+
+    //收尾
+    all[l_len + r_len] = '\n';
+	all[l_len + r_len + 1] = '\0';
+    return all;
+}
+
 int
 receiver_parse_char(struct receiver* recv, char c)
 {
     if(!recv)
         return -EINVAL;
-    if(recv->status != RECEIVER_RUNNING)
-        return RECEIVER_RES_NOT_RUNNING;
     if(recv->status == RECEIVER_EXITED)
         return RECEIVER_RES_EXITED;
+    if(recv->status != RECEIVER_RUNNING)
+        return RECEIVER_RES_NOT_RUNNING;
 
     int cmd;
     char temp_char;
@@ -161,6 +223,14 @@ receiver_parse_char(struct receiver* recv, char c)
             //回车 - 执行命令
             case CMDLINE_KEY_RETURN:
             case CMDLINE_KEY_RETURN2:
+                receiver_combi_cmd(recv);
+                recv->status = RECEIVER_INIT;
+                receiver_puts(recv, "\r\n");
+                if(recv->parse_cmd)
+                    recv->parse_cmd(recv, recv->all_cmd);
+                if(recv->status == RECEIVER_EXITED)
+                    return RECEIVER_RES_EXITED;
+                return RECEIVER_RES_PARSED;
             break;
             
             //ctrl a - 移动光标至最左
