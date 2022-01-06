@@ -37,6 +37,7 @@
 
 #include<termios.h>
 #include<nice_cmd/receiver.h>
+#include<nice_cmd/parse.h>
 
 #ifdef __cplusplus
 extern "C" 
@@ -67,7 +68,7 @@ extern "C"
 struct cmdline
 {
     char prompt[PROMPT_MAX_SIZE];
-    //struct command* cmd_group;
+    parse_ctx_t* cmd_group;
     struct receiver cmd_recv;
     int cmdline_in;
     int cmdline_out;
@@ -77,7 +78,7 @@ struct cmdline
 /*
 * 获取新的cmdline 
 */
-struct cmdline* cmdline_get_new(const char* prompt);
+struct cmdline* cmdline_get_new(parse_ctx_t* ctx, const char* prompt);
 
 /*
 * 为指定cmdline设置提示符
@@ -103,11 +104,6 @@ void cmdline_quit(struct cmdline* cl);
 * free指定cmdline并恢复终端设置
 */
 void cmdline_exit_free(struct cmdline* cl);
-
-/*
-* 接收器回调函数 - 字符输出操作
-*/
-int cmdline_write_char(struct receiver* recv, char c);
 
 #ifdef __cplusplus
 }

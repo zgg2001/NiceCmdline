@@ -38,8 +38,69 @@
 #include<unistd.h>
 #include"cmdline.h"
 
+/*
+* 内部函数 输出字符串
+*/
+static void
+cmdline_puts(struct cmdline* cl, const char* str)
+{
+    if(!cl || !str)
+        return;
+
+    size_t len = strnlen(str, INPUT_BUF_MAX_SIZE), i;
+    for(i = 0; i < len; ++i)
+        if(cl->cmdline_out >= 0)
+            write(cl->cmdline_out, &str[i], 1);
+}
+
+/*
+* 内部函数 字符输出
+*/
+static int
+cmdline_write_char(struct receiver* recv, char c)
+{
+    if(!recv)
+        return -1;
+    
+    int ret= -1;
+    struct cmdline *cl;
+    
+    cl = recv->owner;
+    if(cl->cmdline_out >= 0)
+        ret = write(cl->cmdline_out, &c, 1);
+    
+    return ret;
+}
+
+/*
+* 内部函数 解析命令
+*/
+static void
+cmdline_parse_cmd(struct receiver* recv, const char* cmd)
+{
+    struct cmdline* cl = recv->owner;
+	int ret;
+	ret = parse(cl, cmd);
+	if(ret == PARSE_AMBIGUOUS)
+		cmdline_puts(cl, "Ambiguous command\n");
+	else if(ret == PARSE_NOMATCH)
+		cmdline_puts(cl, "Command not found\n");
+	else if(ret == PARSE_BAD_ARGS)
+		cmdline_puts(cl, "Bad arguments\n");
+}
+
+/*
+* 内部函数 补全命令
+*/
+static int
+cmdline_complete_cmd(struct receiver* recv, const char* buf, int* state, char* dst, unsigned int size)
+{
+    struct cmdline* cl = recv->owner;
+	return complete(cl, buf, state, dst, size);
+}
+
 struct cmdline* 
-cmdline_get_new(const char* prompt)
+cmdline_get_new(parse_ctx_t* ctx, const char* prompt)
 {
 	if (!prompt)
         return NULL;
@@ -54,10 +115,11 @@ cmdline_get_new(const char* prompt)
 	memset(cl, 0, sizeof(struct cmdline));
     
     //cmdline成员初始化
+    cl->cmd_group = ctx;
 	cl->cmdline_in = INPUT_STREAM;
 	cl->cmdline_out = OUTPUT_STREAM;
 	cmdline_set_prompt(cl, prompt);
-	receiver_init(&cl->cmd_recv, cmdline_write_char);
+	receiver_init(&cl->cmd_recv, cmdline_write_char, cmdline_parse_cmd, cmdline_complete_cmd);
 	cl->cmd_recv.owner = cl;
     tcgetattr(0, &term);
     memcpy(&cl->oldterm, &term, sizeof(struct termios));
@@ -123,6 +185,15 @@ cmdline_parse_input(struct cmdline* cl, const char* buf, unsigned int size)
     for(i = 0; i < size; ++i)
     {
         ret = receiver_parse_char(&cl->cmd_recv, buf[i]);
+        
+        if(ret == RECEIVER_RES_PARSED)
+        {
+            receiver_new_cmdline(&cl->cmd_recv, cl->prompt);
+        }
+        else if(ret == RECEIVER_RES_EOF)
+            return -1;
+        else if(ret == RECEIVER_RES_EXITED)
+            return -1;
     }
     
     return i;
@@ -133,6 +204,7 @@ cmdline_quit(struct cmdline* cl)
 {
     if(!cl)
         return;
+    receiver_quit(&cl->cmd_recv);
 }
 
 void
@@ -152,21 +224,6 @@ cmdline_exit_free(struct cmdline* cl)
     tcsetattr(fileno(stdin), TCSANOW, &cl->oldterm);
 }
 
-int
-cmdline_write_char(struct receiver* recv, char c)
-{
-    if(!recv)
-        return -1;
-    
-    int ret= -1;
-    struct cmdline *cl;
-    
-    cl = recv->owner;
-    if(cl->cmdline_out >= 0)
-        ret = write(cl->cmdline_out, &c, 1);
-    
-    return ret;
-}
 
 
 
