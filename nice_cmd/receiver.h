@@ -133,8 +133,10 @@ void receiver_quit(struct receiver* recv);
 
 /*
 * 对接收器缓冲区的字符串进行组合
+* mode = 0时为组合左右缓冲区
+* mode = 1时为仅组合左缓冲区
 */
-const char* receiver_combi_cmd(struct receiver* recv);
+const char* receiver_combi_cmd(struct receiver* recv, int mode);
 
 #define RECEIVER_RES_SUCCESS       0
 #define RECEIVER_RES_PARSED        1

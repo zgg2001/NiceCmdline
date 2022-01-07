@@ -104,7 +104,7 @@ receiver_quit(struct receiver* recv)
 }
 
 const char*
-receiver_combi_cmd(struct receiver* recv)
+receiver_combi_cmd(struct receiver* recv, int mode)
 {
     if(!recv)
         return NULL;
@@ -133,25 +133,28 @@ receiver_combi_cmd(struct receiver* recv)
         }
     }
 
-    //合并右缓冲区
-    if(right->start == 0)
+    if(mode == 0)
     {
-        memcpy(all + l_len, recv->right, r_len);
-    }
-    else
-    {
-        INPUTBUF_FOREACH(right, i, c)
+        //合并右缓冲区
+        if(right->start == 0)
         {
-            all[now] = c;
-            ++now;
-        } 
+            memcpy(all + l_len, recv->right, r_len);
+        }
+        else
+        {
+            INPUTBUF_FOREACH(right, i, c)
+            {
+                all[now] = c;
+                ++now;
+            } 
+        }
+        all[l_len + r_len] = '\n';
+	    all[l_len + r_len + 1] = '\0';
+        return all;
     }
-
-    fflush(stdout);
 
     //收尾
-    all[l_len + r_len] = '\n';
-	all[l_len + r_len + 1] = '\0';
+    all[l_len] = '\0';
     return all;
 }
 
@@ -167,7 +170,8 @@ receiver_parse_char(struct receiver* recv, char c)
 
     int cmd;
     char temp_char;
-    
+    unsigned int i;
+
     cmd = parse_vt102_char(&recv->vt102, c);
 
     //字符c为控制码的一部分且没有结束
@@ -223,7 +227,7 @@ receiver_parse_char(struct receiver* recv, char c)
             //回车 - 执行命令
             case CMDLINE_KEY_RETURN:
             case CMDLINE_KEY_RETURN2:
-                receiver_combi_cmd(recv);
+                receiver_combi_cmd(recv, 0);
                 recv->status = RECEIVER_INIT;
                 receiver_puts(recv, "\r\n");
                 if(recv->parse_cmd)
@@ -292,6 +296,61 @@ receiver_parse_char(struct receiver* recv, char c)
             //tab - 尝试补全命令
             case CMDLINE_KEY_TAB:
             case CMDLINE_KEY_HELP:
+                if(recv->complete_cmd) 
+                {
+                    char tmp_buf[BUFSIZ];
+                    unsigned int tmp_size;
+                    int complete_state;
+                    int ret;
+                   
+                    //将左缓冲区copy至all_cmd 
+                    receiver_combi_cmd(recv, 1);
+                    
+                    //确定是补全还是help
+                    if (cmd == CMDLINE_KEY_TAB)
+                        complete_state = 0;
+                    else
+                        complete_state = -1;
+                    
+                    //初次complete
+                    ret = recv->complete_cmd(recv, recv->all_cmd, &complete_state, tmp_buf, sizeof(tmp_buf));
+                    
+                    //无法补全 or 出错
+                    if(ret <= 0) 
+                    {
+                        return RECEIVER_RES_COMPLETE;
+                    }
+                    
+                    tmp_size = strnlen(tmp_buf, sizeof(tmp_buf));
+                    
+                    //可补全
+                    if(ret == RECEIVER_RES_COMPLETE) 
+                    {
+                        for(i = 0; i < tmp_size; ++i) 
+                        {
+                            if(recv->left_buf.len >= INPUT_BUF_MAX_SIZE)
+                                break;
+                            inputbuf_add_tail(&recv->left_buf, tmp_buf[i]);
+                            recv->write_char(recv, tmp_buf[i]);
+                        }
+                        display_right_buffer(recv, 1);
+                        return RECEIVER_RES_COMPLETE;
+                    }
+                    
+                    //存在多种补全可能性
+                    receiver_puts(recv, "\r\n");
+                    while(ret)
+                    {
+                        recv->write_char(recv, ' ');
+                        for(i = 0; tmp_buf[i]; ++i)
+                            recv->write_char(recv, tmp_buf[i]);
+                        receiver_puts(recv, "\r\n");
+                        //多次complete来取得所有可能性并打印
+                        ret = recv->complete_cmd(recv, recv->all_cmd, &complete_state, tmp_buf, sizeof(tmp_buf));
+                    }
+                    receiver_redisplay(recv);
+                }
+                return RECEIVER_RES_COMPLETE; 
             break;
             
             //ctrl l - 清屏
@@ -302,18 +361,74 @@ receiver_parse_char(struct receiver* recv, char c)
             //alt 退格 / ctrl w - 删除光标左侧的第一个词
             case CMDLINE_KEY_META_BKSPACE:
             case CMDLINE_KEY_CTRL_W:
+                while(!INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
+                      isblank(inputbuf_get_tail(&recv->left_buf)))
+                {
+                    inputbuf_del_tail(&recv->left_buf);
+                    receiver_puts(recv, vt102_bs);
+                }
+                while(!INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
+                      !isblank(inputbuf_get_tail(&recv->left_buf)))
+                {
+                    inputbuf_del_tail(&recv->left_buf);
+                    receiver_puts(recv, vt102_bs);
+                }
+                display_right_buffer(recv, 1);
             break;
             
             //alt d - 删除光标右侧的第一个词
             case CMDLINE_KEY_META_D:
+                while(!INPUT_BUF_IS_EMPTY(&recv->right_buf) &&
+                      isblank(inputbuf_get_head(&recv->right_buf)))
+                {
+                    inputbuf_del_head(&recv->right_buf);
+                }
+                while(!INPUT_BUF_IS_EMPTY(&recv->right_buf) &&
+                      !isblank(inputbuf_get_head(&recv->right_buf)))
+                {
+                    inputbuf_del_head(&recv->right_buf);
+                }  
+                display_right_buffer(recv, 1);
             break;
             
             //alt b - 光标向左移动到当前单词最前端
             case CMDLINE_KEY_WLEFT:
+                while(!INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
+                      (temp_char = inputbuf_get_tail(&recv->left_buf)) &&
+                      isblank(temp_char))
+                {
+                    inputbuf_del_tail(&recv->left_buf);
+                    inputbuf_add_head(&recv->right_buf, temp_char);
+                    receiver_puts(recv, vt102_left_arr);
+                }
+                while(!INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
+                      (temp_char = inputbuf_get_tail(&recv->left_buf)) &&
+                      !isblank(temp_char))
+                {
+                    inputbuf_del_tail(&recv->left_buf);
+                    inputbuf_add_head(&recv->right_buf, temp_char);
+                    receiver_puts(recv, vt102_left_arr);
+                }
             break;
             
             //alt f - 光标向右移动到当前单词最后端
             case CMDLINE_KEY_WRIGHT:
+                while(!INPUT_BUF_IS_EMPTY(&recv->right_buf) &&
+                      (temp_char = inputbuf_get_head(&recv->right_buf)) &&
+                      isblank(temp_char))
+                {
+                    inputbuf_del_head(&recv->right_buf);
+                    inputbuf_add_tail(&recv->left_buf, temp_char);
+                    receiver_puts(recv, vt102_right_arr);
+                }
+                while(!INPUT_BUF_IS_EMPTY(&recv->right_buf) &&
+                      (temp_char = inputbuf_get_head(&recv->right_buf)) &&
+                      !isblank(temp_char))
+                {
+                    inputbuf_del_head(&recv->right_buf);
+                    inputbuf_add_tail(&recv->left_buf, temp_char);
+                    receiver_puts(recv, vt102_right_arr);
+                } 
             break;
         }
         return RECEIVER_RES_SUCCESS;
