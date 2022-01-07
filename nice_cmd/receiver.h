@@ -87,6 +87,9 @@ enum receiver_status
 *       right: 右缓冲配套的内存
 *     all_cmd: 完整的命令 用于解析
 *
+*   paste_buf: 粘贴缓冲区 储存ctrl k等删除的内容
+*       paste: 粘贴缓冲区配套的内容
+*
 *  write_char: 输出字符
 *   parse_cmd: 解析命令
 *complete_cmd: 补全命令
@@ -106,6 +109,9 @@ struct receiver
     struct inputbuf right_buf;
     char right[INPUT_BUF_MAX_SIZE];
     char all_cmd[INPUT_BUF_MAX_SIZE * 2];
+    //粘贴缓冲区 储存ctrl k等删除的内容
+    struct inputbuf paste_buf;
+    char paste[INPUT_BUF_MAX_SIZE * 2];
     //历史记录
     //回调函数
     func_write_char* write_char;

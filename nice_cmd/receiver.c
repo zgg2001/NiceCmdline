@@ -81,7 +81,8 @@ receiver_new_cmdline(struct receiver* recv, const char* prompt)
     parser_vt102_init(&recv->vt102);
     inputbuf_init(&recv->left_buf, recv->left, INPUT_BUF_MAX_SIZE);
     inputbuf_init(&recv->right_buf, recv->right, INPUT_BUF_MAX_SIZE);
-    
+    inputbuf_init(&recv->paste_buf, recv->paste, INPUT_BUF_MAX_SIZE * 2);
+
     //输出prompt
     recv->prompt_size = strnlen(prompt, INPUT_BUF_MAX_SIZE - 1);
     if(prompt != recv->prompt)
@@ -252,7 +253,7 @@ receiver_parse_char(struct receiver* recv, char c)
             
             //ctrl e - 移动光标至最右
             case CMDLINE_KEY_CTRL_E:
-                if (INPUT_BUF_IS_EMPTY(&recv->right_buf))
+                if(INPUT_BUF_IS_EMPTY(&recv->right_buf))
                     break;
                 receiver_miniprintf(recv, vt102_multi_right, recv->right_buf.len);
                 while(!INPUT_BUF_IS_EMPTY(&recv->right_buf)) 
@@ -265,10 +266,29 @@ receiver_parse_char(struct receiver* recv, char c)
             
             //ctrl k - 剪切光标右侧的内容
             case CMDLINE_KEY_CTRL_K:
+                if(INPUT_BUF_IS_EMPTY(&recv->right_buf))
+                    break;
+                inputbuf_init(&recv->paste_buf, recv->paste, INPUT_BUF_MAX_SIZE * 2);
+                INPUTBUF_FOREACH(&recv->right_buf, i, temp_char)
+                {
+                    inputbuf_add_tail(&recv->paste_buf, temp_char);
+                }
+                inputbuf_init(&recv->right_buf, recv->right, INPUT_BUF_MAX_SIZE);
+                receiver_puts(recv, vt102_clear_right);
             break;
             
             //ctrl y - 粘贴剪切的内容
             case CMDLINE_KEY_CTRL_Y:
+                if(INPUT_BUF_IS_EMPTY(&recv->paste_buf))
+                    break;
+                INPUTBUF_FOREACH(&recv->paste_buf, i, temp_char)
+                {
+                    if(recv->left_buf.len >= INPUT_BUF_MAX_SIZE - 1)
+                        break;
+                    inputbuf_add_tail(&recv->left_buf, temp_char);
+                    recv->write_char(recv, temp_char);
+                }
+                display_right_buffer(recv, 0);
             break;
             
             //ctrl c - 重置命令行
@@ -280,7 +300,7 @@ receiver_parse_char(struct receiver* recv, char c)
             //delete / ctrl d - 删除光标右侧的第一个字符
             case CMDLINE_KEY_SUPPR:
             case CMDLINE_KEY_CTRL_D:
-                if (cmd == CMDLINE_KEY_CTRL_D && 
+                if(cmd == CMDLINE_KEY_CTRL_D && 
                     INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
                     INPUT_BUF_IS_EMPTY(&recv->right_buf)) 
                 {
@@ -307,7 +327,7 @@ receiver_parse_char(struct receiver* recv, char c)
                     receiver_combi_cmd(recv, 1);
                     
                     //确定是补全还是help
-                    if (cmd == CMDLINE_KEY_TAB)
+                    if(cmd == CMDLINE_KEY_TAB)
                         complete_state = 0;
                     else
                         complete_state = -1;
@@ -328,7 +348,7 @@ receiver_parse_char(struct receiver* recv, char c)
                     {
                         for(i = 0; i < tmp_size; ++i) 
                         {
-                            if(recv->left_buf.len >= INPUT_BUF_MAX_SIZE)
+                            if(recv->left_buf.len >= INPUT_BUF_MAX_SIZE - 1)
                                 break;
                             inputbuf_add_tail(&recv->left_buf, tmp_buf[i]);
                             recv->write_char(recv, tmp_buf[i]);
@@ -361,15 +381,22 @@ receiver_parse_char(struct receiver* recv, char c)
             //alt 退格 / ctrl w - 删除光标左侧的第一个词
             case CMDLINE_KEY_META_BKSPACE:
             case CMDLINE_KEY_CTRL_W:
+                if(INPUT_BUF_IS_EMPTY(&recv->left_buf))
+                    break;
+                inputbuf_init(&recv->paste_buf, recv->paste, INPUT_BUF_MAX_SIZE * 2);
                 while(!INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
-                      isblank(inputbuf_get_tail(&recv->left_buf)))
+                      (temp_char = inputbuf_get_tail(&recv->left_buf)) &&
+                      isblank(temp_char))
                 {
+                    inputbuf_add_head(&recv->paste_buf, temp_char);
                     inputbuf_del_tail(&recv->left_buf);
                     receiver_puts(recv, vt102_bs);
                 }
                 while(!INPUT_BUF_IS_EMPTY(&recv->left_buf) &&
-                      !isblank(inputbuf_get_tail(&recv->left_buf)))
+                      (temp_char = inputbuf_get_tail(&recv->left_buf)) &&
+                      !isblank(temp_char))
                 {
+                    inputbuf_add_head(&recv->paste_buf, temp_char);
                     inputbuf_del_tail(&recv->left_buf);
                     receiver_puts(recv, vt102_bs);
                 }
@@ -378,14 +405,21 @@ receiver_parse_char(struct receiver* recv, char c)
             
             //alt d - 删除光标右侧的第一个词
             case CMDLINE_KEY_META_D:
+                if(INPUT_BUF_IS_EMPTY(&recv->right_buf))
+                    break;
+                inputbuf_init(&recv->paste_buf, recv->paste, INPUT_BUF_MAX_SIZE * 2);
                 while(!INPUT_BUF_IS_EMPTY(&recv->right_buf) &&
-                      isblank(inputbuf_get_head(&recv->right_buf)))
+                      (temp_char = inputbuf_get_head(&recv->right_buf)) &&
+                      isblank(temp_char))
                 {
+                    inputbuf_add_tail(&recv->paste_buf, temp_char);
                     inputbuf_del_head(&recv->right_buf);
                 }
                 while(!INPUT_BUF_IS_EMPTY(&recv->right_buf) &&
-                      !isblank(inputbuf_get_head(&recv->right_buf)))
+                      (temp_char = inputbuf_get_head(&recv->right_buf)) &&
+                      !isblank(temp_char))
                 {
+                    inputbuf_add_tail(&recv->paste_buf, temp_char);
                     inputbuf_del_head(&recv->right_buf);
                 }  
                 display_right_buffer(recv, 1);
