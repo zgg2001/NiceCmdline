@@ -36,6 +36,7 @@
 #define _RECEIVER_H_
 
 #include<nice_cmd/inputbuf.h>
+#include<nice_cmd/history.h>
 #include<nice_cmd/parser_vt102.h>
 
 #ifdef __cplusplus
@@ -48,6 +49,7 @@ extern "C"
 */
 #define PROMPT_MAX_SIZE 32
 #define INPUT_BUF_MAX_SIZE 512
+#define HISTORY_MAX_NUM 20
 
 /*
 * 接收器配套回调函数
@@ -90,6 +92,8 @@ enum receiver_status
 *   paste_buf: 粘贴缓冲区 储存ctrl k等删除的内容
 *       paste: 粘贴缓冲区配套的内容
 *
+*        hist: 历史记录系统
+*
 *  write_char: 输出字符
 *   parse_cmd: 解析命令
 *complete_cmd: 补全命令
@@ -113,6 +117,7 @@ struct receiver
     struct inputbuf paste_buf;
     char paste[INPUT_BUF_MAX_SIZE * 2];
     //历史记录
+    struct history hist;
     //回调函数
     func_write_char* write_char;
     func_parse_cmd* parse_cmd;

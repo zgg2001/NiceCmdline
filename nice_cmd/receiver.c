@@ -60,7 +60,10 @@ receiver_init(struct receiver* recv, func_write_char* write_char, func_parse_cmd
     memset(recv->left, 0, INPUT_BUF_MAX_SIZE);
     memset(recv->right, 0, INPUT_BUF_MAX_SIZE);
     memset(recv, 0, sizeof(*recv));
-    
+
+    //初始化历史记录系统 储存上限为HISTORY_MAX_NUM条
+    history_init(&recv->hist, HISTORY_MAX_NUM, INPUT_BUF_MAX_SIZE);
+
     recv->status = RECEIVER_INIT;
     recv->write_char = write_char;
     recv->parse_cmd = parse_cmd;
@@ -81,7 +84,6 @@ receiver_new_cmdline(struct receiver* recv, const char* prompt)
     parser_vt102_init(&recv->vt102);
     inputbuf_init(&recv->left_buf, recv->left, INPUT_BUF_MAX_SIZE);
     inputbuf_init(&recv->right_buf, recv->right, INPUT_BUF_MAX_SIZE);
-    inputbuf_init(&recv->paste_buf, recv->paste, INPUT_BUF_MAX_SIZE * 2);
 
     //输出prompt
     recv->prompt_size = strnlen(prompt, INPUT_BUF_MAX_SIZE - 1);
@@ -172,6 +174,7 @@ receiver_parse_char(struct receiver* recv, char c)
     int cmd;
     char temp_char;
     unsigned int i;
+    char* temp_str;
 
     cmd = parse_vt102_char(&recv->vt102, c);
 
@@ -187,11 +190,43 @@ receiver_parse_char(struct receiver* recv, char c)
             //ctrl p - 历史记录向上
             case CMDLINE_KEY_UP_ARR:
             case CMDLINE_KEY_CTRL_P:
+                if((temp_str = history_get_prev(&recv->hist)) != NULL)
+                {
+                    //如果当前为用户输入 则需进行记录
+                    if(IS_NOT_HISTORY_CMD(&recv->hist))
+                    {
+                        receiver_combi_cmd(recv, 0);
+                        history_save_user_input(&recv->hist, recv->all_cmd);
+                    }
+                    //清空输入缓冲区
+                    parser_vt102_init(&recv->vt102);
+                    inputbuf_init(&recv->left_buf, recv->left, INPUT_BUF_MAX_SIZE);
+                    inputbuf_init(&recv->right_buf, recv->right, INPUT_BUF_MAX_SIZE);
+                    //写入历史记录
+                    for(i = 0; temp_str[i] != '\0'; ++i)
+                    {
+                        inputbuf_add_tail(&recv->left_buf, temp_str[i]);
+                    }
+                    receiver_redisplay(recv);
+                }
             break;
             
             //ctrl n - 历史记录向下
             case CMDLINE_KEY_DOWN_ARR:
             case CMDLINE_KEY_CTRL_N:
+                if((temp_str = history_get_next(&recv->hist)) != NULL)
+                {
+                    //清空输入缓冲区
+                    parser_vt102_init(&recv->vt102);
+                    inputbuf_init(&recv->left_buf, recv->left, INPUT_BUF_MAX_SIZE);
+                    inputbuf_init(&recv->right_buf, recv->right, INPUT_BUF_MAX_SIZE);
+                    //写入历史记录
+                    for(i = 0; temp_str[i] != '\0'; ++i)
+                    {
+                        inputbuf_add_tail(&recv->left_buf, temp_str[i]);
+                    }
+                    receiver_redisplay(recv);
+                }
             break;
             
             //ctrl f - 光标向右
@@ -232,7 +267,16 @@ receiver_parse_char(struct receiver* recv, char c)
                 recv->status = RECEIVER_INIT;
                 receiver_puts(recv, "\r\n");
                 if(recv->parse_cmd)
+                {
+                    //新命令长度大于0时进行记录
+                    cmd = strnlen(recv->all_cmd, INPUT_BUF_MAX_SIZE * 2) - 1;
+                    if(cmd > 0)
+                    {
+                        history_add_new(&recv->hist, recv->all_cmd, cmd, 0);
+                    }
+                    //解析
                     recv->parse_cmd(recv, recv->all_cmd);
+                }
                 if(recv->status == RECEIVER_EXITED)
                     return RECEIVER_RES_EXITED;
                 return RECEIVER_RES_PARSED;
