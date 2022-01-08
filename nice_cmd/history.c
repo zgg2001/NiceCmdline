@@ -49,16 +49,17 @@ history_init(struct history* hist, int max_num, int max_size)
         return;
     
     hist->head = new_command("head-node", 9, max_size);
-    hist->now = 0;
+    hist->now = NULL;
     hist->history_cmd_num = 0;
     hist->history_cmd_max_num = max_num;
     hist->command_buf_max_size = max_size;
     hist->user_input_buf = (char*)malloc(sizeof(char) * (max_size + 1));
+    hist->user_input_buf[0] = '\0';
     hist->user_input_buf_len = 0;
 }
 
 int 
-history_add_new(struct history* hist, char* cmd, int len)
+history_add_new(struct history* hist, char* cmd, int len, int mode)
 {
     if(!hist || !cmd || hist->history_cmd_max_num < 0)
         return -1;
@@ -90,6 +91,11 @@ history_add_new(struct history* hist, char* cmd, int len)
         temp_ptr->prev = old_ptr;
         temp_ptr->next = hist->head;
         hist->head->prev = temp_ptr;
+    }
+
+    if(mode == 0)
+    {
+        hist->now = NULL;
     }
     
     //如果储存命令数量超限-删除head->next
@@ -136,6 +142,64 @@ history_del_head(struct history* hist)
         delete_command(del_ptr);
     }
     return 0;
+}
+
+char* 
+history_get_prev(struct history* hist)
+{
+    if(!hist)
+        return NULL;
+    if(hist->now == NULL && hist->history_cmd_num == 0)
+        return NULL;
+    if(hist->now != NULL && hist->now->prev == hist->head)
+        return NULL;
+    
+    if(hist->now == NULL)
+        hist->now = hist->head->prev;
+    else
+        hist->now = hist->now->prev;
+    return hist->now->cmd;
+}
+
+char* 
+history_get_next(struct history* hist)
+{
+    if(!hist)
+        return NULL;
+    if(hist->now == NULL)
+        return NULL;
+    
+    hist->now = hist->now->next;
+    //回到用户输入 则返回user_input_buf
+    if(hist->now == hist->head)
+    {
+        hist->now = NULL;
+        return hist->user_input_buf;
+    }
+    //其余返回储存的cmd
+    return hist->now->cmd;
+}
+
+void
+history_save_user_input(struct history* hist, char* input)
+{
+    if(!hist || !input)
+        return;
+
+    unsigned int len = 0;
+    char temp_c;
+
+    temp_c = input[len];
+    while(temp_c != '\n' && temp_c != '\0')
+    {
+        if(len >= hist->command_buf_max_size)
+            break;
+        hist->user_input_buf[len] = temp_c;
+        ++len;
+        temp_c = input[len];
+    }
+    hist->user_input_buf[len] = '\0';
+    hist->user_input_buf_len = len;
 }
 
 void 

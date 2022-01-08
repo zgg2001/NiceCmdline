@@ -55,7 +55,14 @@ struct history
     int command_buf_max_size;
     char* user_input_buf;
     int user_input_buf_len;
-}
+};
+
+/*
+* 返回值为1时 说明当前为用户输入
+* 即在执行历史记录查询时
+* 需要将此命令储存至user_input_buf
+*/
+#define IS_NOT_HISTORY_CMD(hist) ((hist)->now == (hist)->head->prev)
 
 /*
 * 新建struct command并返回
@@ -92,10 +99,11 @@ void history_init(struct history* hist, int max_num, int max_size);
 * hist: 指向要要添加命令的struct history
 *  cmd: 要添加的命令
 *  len: 命令的长度
+* mode: 模式 当为0时 命令添加后hist->now复位为NULL
 *
 * 返回0为成功 -1为失败
 */
-int history_add_new(struct history* hist, char* cmd, int len);
+int history_add_new(struct history* hist, char* cmd, int len, int mode);
 
 /*
 * 删除最久的一条历史记录
@@ -106,6 +114,25 @@ int history_add_new(struct history* hist, char* cmd, int len);
 * 返回0为成功 -1为失败
 */
 int history_del_head(struct history* hist);
+
+/*
+* 查询上一条历史记录
+* 返回值为查询结果 NULL为不存在
+*/
+char* history_get_prev(struct history* hist);
+
+/*
+* 查询下一条历史记录
+* 返回值为查询结果 NULL为不存在
+*/
+char* history_get_next(struct history* hist);
+
+/*
+* 将用户输入保存至user_input_buf
+*
+* input: 一个储存用户输入的字符串指针 以'\n'或'\0'结尾
+*/
+void history_save_user_input(struct history* hist, char* input);
 
 /*
 * free历史记录系统
