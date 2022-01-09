@@ -142,7 +142,7 @@ match_inst(parse_inst_t* inst, const char* buf, unsigned int nb_match_token, voi
         if(token_p)
             memcpy(&token_hdr, token_p, sizeof(token_hdr));
     }
-
+    
     //匹配数为0
     if(i == 0)
         return -1;
@@ -286,7 +286,7 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
     struct token_hdr token_hdr;
     
     int nb_token = 0;//buf中的完整令牌数
-    const char * incomplete_token = buf;
+    const char* incomplete_token = buf;
     unsigned int incomplete_token_len;
     
     char completion_buf[COMPLETION_BUF_SIZE];
@@ -295,6 +295,7 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
     unsigned int nb_non_completable;
     
     char tmpbuf[COMPLETION_BUF_SIZE];
+    int tmp_len;
     unsigned int i, n;
     int l;
     int local_state = 0;
@@ -303,9 +304,9 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
     //统计buf中的完整令牌数 以及确定需要补全的令牌
     for(i = 0; buf[i]; ++i)
     {
-        if(!isblank(buf[i]) && isblank(buf[i+1]))
+        if(!isblank(buf[i]) && isblank(buf[i + 1]))
             ++nb_token;
-        if(isblank(buf[i]) && !isblank(buf[i+1]))
+        if(isblank(buf[i]) && !isblank(buf[i + 1]))
             incomplete_token = buf + i + 1;
     }
     incomplete_token_len = strnlen(incomplete_token, INPUT_BUF_MAX_SIZE);
@@ -342,14 +343,19 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
             {
                 if(token_hdr.ops->complete_get_elt(token_p, i, tmpbuf, sizeof(tmpbuf)) < 0)
                     continue;
-                strcat(tmpbuf, " "); /* we have at least room for one char */
+                tmp_len = strnlen(tmpbuf, sizeof(tmpbuf));
+                if(tmp_len < COMPLETION_BUF_SIZE - 1)
+                {
+                    tmpbuf[tmp_len] = ' ';
+                    tmpbuf[tmp_len + 1] = '\0';
+                }
                 //匹配补全令牌
                 if(!strncmp(incomplete_token, tmpbuf, incomplete_token_len))
                 {
                     if(completion_len == -1)//起始
                     {
-                        strcpy(completion_buf, tmpbuf + incomplete_token_len);
-                        completion_len = strlen(tmpbuf + incomplete_token_len);
+                        snprintf(completion_buf, sizeof(completion_buf), "%s", tmpbuf + incomplete_token_len);
+                        completion_len = strnlen(tmpbuf + incomplete_token_len, sizeof(tmpbuf) - incomplete_token_len);
                     }
                     else
                     {
@@ -364,7 +370,7 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
             ++inst_num;
             inst = ctx[inst_num];
         }
-        
+       
         //无法补全
         if(nb_completable == 0 && nb_non_completable == 0)
             return 0;
@@ -375,7 +381,7 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
             //存在可补全内容
             if(completion_len > 0)
             {
-                if(completion_len + 1 > size)
+                if((unsigned int)completion_len + 1 > size)
                     return 0;
                 strcpy(dst, completion_buf);
                 return 2;
@@ -443,7 +449,12 @@ complete(struct cmdline* cl, const char* buf, int* state, char* dst, unsigned in
         {
             if(token_hdr.ops->complete_get_elt(token_p, i, tmpbuf, sizeof(tmpbuf)) < 0)
                 continue;
-            strcat(tmpbuf, " "); /* we have at least room for one char */
+            tmp_len = strnlen(tmpbuf, sizeof(tmpbuf));
+            if (tmp_len < COMPLETION_BUF_SIZE - 1) 
+            {	
+                tmpbuf[tmp_len] = ' ';
+                tmpbuf[tmp_len + 1] = 0;
+            }
             //匹配补全令牌
             if(!strncmp(incomplete_token, tmpbuf, incomplete_token_len))
             {

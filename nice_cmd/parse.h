@@ -68,10 +68,16 @@ typedef struct token_hdr parse_token_hdr_t;
 /*
 * 令牌回调函数配置
 *
-*            parse:
-*  complete_get_nb:
-* complete_get_elt:
-*         get_help:
+*            parse: 根据传入的const char*进行匹配 结果存入void* 
+*                   -1为失败
+*  complete_get_nb: 返回此令牌中可能匹配选择的数量 
+*                   -1为失败
+* complete_get_elt: 将令牌中下标为int的选择存入char*中
+*                   unsigned int为缓冲区最大长度
+*                   -1为失败
+*         get_help: 根据令牌中的可匹配情况 将帮助信息存入char* 
+*                   unsigned int为缓冲区最大长度 
+*                   -1为失败
 */
 struct token_ops 
 {
@@ -83,6 +89,11 @@ struct token_ops
 
 /*
 * 命令结构体
+*
+*        f: 命令匹配后执行的回调函数
+*     data: 命令匹配时的参数
+* help_str: 命令的帮助信息
+*   tokens: 命令的令牌组
 */
 struct inst 
 {
