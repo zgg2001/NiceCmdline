@@ -83,7 +83,7 @@ get_next_token(const char* s)
 int
 parse_string(parse_token_hdr_t* tk, const char* buf, void* res)
 {
-    if(!tk || !buf || !(*buf) || !res)
+    if(!tk || !buf || !(*buf))
         return -1;
     
     struct token_string* tk2;
