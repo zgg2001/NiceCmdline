@@ -218,7 +218,10 @@ cmdline_exit_free(struct cmdline* cl)
         close(cl->cmdline_in);
 	if (cl->cmdline_out != cl->cmdline_in && cl->cmdline_out > 2)
         close(cl->cmdline_out);
-	
+
+    //free历史记录部分
+    history_free(&cl->cmd_recv.hist);
+
     //free并且恢复终端设置
     free(cl);
     tcsetattr(fileno(stdin), TCSANOW, &cl->oldterm);
