@@ -79,14 +79,14 @@ static void
 cmdline_parse_cmd(struct receiver* recv, const char* cmd)
 {
     struct cmdline* cl = recv->owner;
-	int ret;
-	ret = parse(cl, cmd);
-	if(ret == PARSE_AMBIGUOUS)
-		cmdline_puts(cl, "Ambiguous command\n");
-	else if(ret == PARSE_NOMATCH)
-		cmdline_puts(cl, "Command not found\n");
-	else if(ret == PARSE_BAD_ARGS)
-		cmdline_puts(cl, "Bad arguments\n");
+    int ret;
+    ret = parse(cl, cmd);
+    if(ret == PARSE_AMBIGUOUS)
+        cmdline_puts(cl, "Ambiguous command\n");
+    else if(ret == PARSE_NOMATCH)
+        cmdline_puts(cl, "Command not found\n");
+    else if(ret == PARSE_BAD_ARGS)
+        cmdline_puts(cl, "Bad arguments\n");
 }
 
 /*
@@ -96,7 +96,7 @@ static int
 cmdline_complete_cmd(struct receiver* recv, const char* buf, int* state, char* dst, unsigned int size)
 {
     struct cmdline* cl = recv->owner;
-	return complete(cl, buf, state, dst, size);
+    return complete(cl, buf, state, dst, size);
 }
 
 struct cmdline* 
@@ -110,24 +110,24 @@ cmdline_get_new(parse_ctx_t* ctx, const char* prompt)
     
     //cmdline内存初始化
     cl = malloc(sizeof(struct cmdline));
-	if (cl == NULL)
+    if(cl == NULL)
         return NULL;
-	memset(cl, 0, sizeof(struct cmdline));
+    memset(cl, 0, sizeof(struct cmdline));
     
     //cmdline成员初始化
     cl->cmd_group = ctx;
-	cl->cmdline_in = INPUT_STREAM;
-	cl->cmdline_out = OUTPUT_STREAM;
-	cmdline_set_prompt(cl, prompt);
-	receiver_init(&cl->cmd_recv, cmdline_write_char, cmdline_parse_cmd, cmdline_complete_cmd);
-	cl->cmd_recv.owner = cl;
+    cl->cmdline_in = INPUT_STREAM;
+    cl->cmdline_out = OUTPUT_STREAM;
+    cmdline_set_prompt(cl, prompt);
+    receiver_init(&cl->cmd_recv, cmdline_write_char, cmdline_parse_cmd, cmdline_complete_cmd);
+    cl->cmd_recv.owner = cl;
     tcgetattr(0, &term);
     memcpy(&cl->oldterm, &term, sizeof(struct termios));
     
     //终端配置设置
-	term.c_lflag &= ~(ICANON | ECHO | ISIG);
-	tcsetattr(0, TCSANOW, &term);
-	setbuf(stdin, NULL);
+    term.c_lflag &= ~(ICANON | ECHO | ISIG);
+    tcsetattr(0, TCSANOW, &term);
+    setbuf(stdin, NULL);
     
     //启动命令行接收器
     receiver_new_cmdline(&cl->cmd_recv, prompt);
@@ -214,17 +214,17 @@ cmdline_exit_free(struct cmdline* cl)
         return;
     
     //关闭输入输出流
-	if (cl->cmdline_in > 2)
+    if (cl->cmdline_in > 2)
         close(cl->cmdline_in);
-	if (cl->cmdline_out != cl->cmdline_in && cl->cmdline_out > 2)
+    if (cl->cmdline_out != cl->cmdline_in && cl->cmdline_out > 2)
         close(cl->cmdline_out);
 
     //free历史记录部分
     history_free(&cl->cmd_recv.hist);
 
     //free并且恢复终端设置
-    free(cl);
     tcsetattr(fileno(stdin), TCSANOW, &cl->oldterm);
+    free(cl);
 }
 
 
