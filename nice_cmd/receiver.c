@@ -123,34 +123,20 @@ receiver_combi_cmd(struct receiver* recv, int mode)
     r_len = recv->right_buf.len;
 
     //合并左缓冲区
-    if(left->start == 0)
+    INPUTBUF_FOREACH(left, i, c)
     {
-        memcpy(all, recv->left, l_len);
-    }
-    else
-    {
-        INPUTBUF_FOREACH(left, i, c)
-        {
-            all[now] = c;
-            ++now;
-        }
+        all[now] = c;
+        ++now;
     }
 
     if(mode == 0)
     {
         //合并右缓冲区
-        if(right->start == 0)
+        INPUTBUF_FOREACH(right, i, c)
         {
-            memcpy(all + l_len, recv->right, r_len);
-        }
-        else
-        {
-            INPUTBUF_FOREACH(right, i, c)
-            {
-                all[now] = c;
-                ++now;
-            } 
-        }
+            all[now] = c;
+            ++now;
+        } 
         all[l_len + r_len] = '\n';
 	    all[l_len + r_len + 1] = '\0';
         return all;
@@ -238,6 +224,8 @@ receiver_parse_char(struct receiver* recv, char c)
                 inputbuf_del_head(&recv->right_buf);
                 inputbuf_add_tail(&recv->left_buf, temp_char);
                 receiver_puts(recv, vt102_right_arr);
+                //printf("\n");
+                //receiver_redisplay(recv);
             break;
             
             //ctrl b - 光标向左
@@ -249,6 +237,8 @@ receiver_parse_char(struct receiver* recv, char c)
                 inputbuf_del_tail(&recv->left_buf);
                 inputbuf_add_head(&recv->right_buf, temp_char);
                 receiver_puts(recv, vt102_left_arr);
+                //printf("\n");
+                //receiver_redisplay(recv);
             break;
             
             //退格 - 删除光标左侧的第一个字符
